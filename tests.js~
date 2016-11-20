@@ -1,0 +1,224 @@
+function div(x, y) {
+    return x / y;
+}
+
+function push(arr, x) {
+    arr = arr.slice();
+    arr.push(x);
+    return arr;
+}
+
+function asyncCollFromArray(arr) {
+    return {
+	reductions: function(r, accum, callback) {
+	    var fn = function(idx, accum, data) {
+		if(idx < arr.length - 1) {
+		    var accum1 = r(accum, arr[idx]);
+		    setTimeout(function() {
+			callback(accum1, function(newData) {
+			    fn(idx + 1, accum1, newData);
+			}, data);
+		    }, 100);
+		}
+		else if(idx === arr.length - 1) {
+		    callback(r(accum, arr[idx]), null, data);
+		}
+		else {
+		    callback(accum, null, data);
+		}
+	    };
+	    
+	    return function(data) {
+		fn(0, accum, data);
+	    };
+	}
+    };
+}
+
+function testReductions(assert, coll, f, initial, expectations) {
+    var counter = 0;
+    var done = assert.async(expectations.length);
+    
+    coll.reductions(f, initial, function(accum, next, data) {
+	++counter;
+	assert.deepEqual(accum, expectations[counter - 1], "accum " + counter);
+	assert.deepEqual(data, counter, "data " + counter);
+	if(counter === expectations.length) {
+	    assert.notOk(next, "next " + counter);
+	}
+	else {
+	    assert.ok(next, "next " + counter);
+	    next(data + 1);
+	}
+	done();
+    })(1);
+}
+
+// *********
+// * Tests *
+// *********
+
+QUnit.module("Array Collection");
+
+QUnit.test("creation", function(assert) {
+    assert.ok(coll([]).reductions, "from []");
+    assert.ok(coll(new Array()).reductions, "from new Array()");
+});
+
+QUnit.test("reductions (empty)", function(assert) {
+    testReductions(assert, coll([]), div, "foo", ["foo"]);
+});
+
+QUnit.test("reductions", function(assert) {
+    testReductions(assert, coll([2, 3, 4]), div, 1, [1/2, 1/2/3, 1/2/3/4]);
+});
+
+
+QUnit.module("Async Array Collection");
+
+QUnit.test("reductions (empty)", function(assert) {
+    testReductions(assert, asyncCollFromArray([]), div, "foo", ["foo"]);
+});
+
+QUnit.test("reductions", function(assert) {
+    testReductions(assert, asyncCollFromArray([2, 3, 4]), div, 1, [1/2, 1/2/3, 1/2/3/4]);
+});
+
+
+QUnit.module("Parallel Collection");
+
+QUnit.test("creation", function(assert) {
+    assert.ok(parallel(coll([])).reductions, "from single");
+    assert.ok(parallel(coll([]), coll([])).reductions, "from multiple");
+});
+
+QUnit.test("reductions (single empty)", function(assert) {
+    testReductions(assert, parallel(coll([])), div, "foo", ["foo"]);
+});
+
+QUnit.test("reductions (single)", function(assert) {
+    testReductions(assert, parallel(coll([2, 3, 4])), div, 1, [1/2, 1/2/3, 1/2/3/4]);
+});
+
+QUnit.test("reductions (two, both empty)", function(assert) {
+    testReductions(assert, parallel(coll([]), coll([])), div, "foo", ["foo"]);
+});
+
+QUnit.test("reductions (two, first empty)", function(assert) {
+    testReductions(assert, parallel(coll([]), coll([1, 2, 3])), div, "foo", ["foo"]);
+});
+
+QUnit.test("reductions (two, second empty)", function(assert) {
+    testReductions(assert, parallel(coll([1, 2, 3]), coll([])), div, "foo", ["foo"]);
+});
+
+QUnit.test("reductions (two, same length, ignore accum)", function(assert) {
+    testReductions(assert, parallel(coll([1, 2, 3]), coll([2, 3, 4])), function(accum, x, y) {
+	return x * y;
+    }, [], [2, 6, 12]);
+});
+
+QUnit.test("reductions (two, same length)", function(assert) {
+    testReductions(assert, parallel(coll([1, 2, 3]), coll([2, 3, 4])), function(accum, x, y) {
+	return push(accum, x * y);
+    }, [], [[2], [2, 6], [2, 6, 12]]);
+});
+
+QUnit.test("reductions (two, first shorter)", function(assert) {
+    testReductions(assert, parallel(coll([1, 2]), coll([2, 3, 4])), function(accum, x, y) {
+	return push(accum, x * y);
+    }, [], [[2], [2, 6]]);
+});
+
+QUnit.test("reductions (two, second shorter)", function(assert) {
+    testReductions(assert, parallel(coll([1, 2, 3]), coll([2, 3])), function(accum, x, y) {
+	return push(accum, x * y);
+    }, [], [[2], [2, 6]]);
+});
+
+QUnit.test("reductions (nested parallel)", function(assert) {
+    testReductions(assert, parallel(parallel(coll([1, 2, 3]), coll(["a", "b", "c"])),
+				    parallel(coll([true, false, null]), coll(["x", "y", "z"]))),
+		   function(accum, a, b, c, d) {
+		       return [a, b, c, d];
+		   }, [], [[1, "a", true, "x"],
+			   [2, "b", false, "y"],
+			   [3, "c", null, "z"]]);
+});
+
+QUnit.test("reductions (nested parallel, one shorter)", function(assert) {
+    testReductions(assert, parallel(parallel(coll([1, 2, 3]), coll(["a", "b", "c"])),
+				    parallel(coll([true, false]), coll(["x", "y", "z"]))),
+		   function(accum, a, b, c, d) {
+		       return [a, b, c, d];
+		   }, [], [[1, "a", true, "x"],
+			   [2, "b", false, "y"]]);
+});
+
+QUnit.test("reductions (two, one async)", function(assert) {
+    testReductions(assert, parallel(asyncCollFromArray([1, 2, 3]), coll([2, 3, 4])), function(accum, x, y) {
+	return push(accum, x * y);
+    }, [], [[2], [2, 6], [2, 6, 12]]);
+});
+
+QUnit.test("reductions (two, both async)", function(assert) {
+    testReductions(assert, parallel(asyncCollFromArray([1, 2, 3]), asyncCollFromArray([2, 3, 4])), function(accum, x, y) {
+	return push(accum, x * y);
+    }, [], [[2], [2, 6], [2, 6, 12]]);
+});
+
+
+
+QUnit.module("Operations");
+
+QUnit.test("reduce", function(assert) {
+    assert.equal(reduce(div, "foo", coll([])), "foo", "empty collection");
+    assert.equal(reduce(div, 1, coll([2, 3, 4])), 1/2/3/4, "sync collection");
+
+    var done = assert.async(4);
+
+    reduce(div, 1, asyncCollFromArray([2, 3, 4])).result(function(x) {
+	assert.equal(x, 1/2/3/4, "async collection");
+	done();
+    });
+    
+    assert.equal(reduce(div, 1, asyncCollFromArray([2, 3, 4]), function(x) {
+	assert.equal(x, 1/2/3/4, "async collection (callback)");
+	done();
+    }), undefined, "async collection return (callback)");
+
+    assert.equal(reduce(div, "foo", asyncCollFromArray([]), function(x) {
+	assert.equal(x, "foo", "async collection (empty, callback)");
+	done();
+    }), "foo", "async collection return (empty, callback)");
+    
+    reduce(function(accum, x, y) {
+	return accum + x * y;
+    }, 0, parallel(coll([2, 3, 4]), asyncCollFromArray([10, 20, 30])),
+	   function(res) {
+	       assert.equal(res, 2*10+3*20+4*30, "parallel sync/async mix");
+	       done();
+	   });
+});
+
+QUnit.test("collToArray", function(assert) {
+    assert.deepEqual(collToArray(coll([])), [], "empty collection");
+    assert.deepEqual(collToArray(coll([1, 2, 3, 4])), [1, 2, 3, 4], "sync collection");
+
+    var done = assert.async(2);
+    
+    collToArray(asyncCollFromArray([1, 2, 3, 4])).result(function(x) {
+	assert.deepEqual(x, [1, 2, 3, 4], "async collection");
+	done();
+    });
+
+    collToArray(asyncCollFromArray([1, 2, 3, 4]), function(x) {
+	assert.deepEqual(x, [1, 2, 3, 4], "async collection (callback)");
+	done();
+    });
+
+    assert.deepEqual(collToArray(parallel(coll([1, 2, 3, 4]), coll(["x", "y", "z"]))),
+		     [[1, "x"],
+		      [2, "y"],
+		      [3, "z"]], "parallel collection");
+});
