@@ -49,11 +49,7 @@ function asyncCollFromArray(arr) {
 			}, 0);
                     }
 		}catch(e) {
-		    if(e instanceof ReducedException) {
-			callback(e.result, null, data);
-		    }
-		    else
-			throw e;
+		    handleReducedException(e, callback, data);
 		}
 	    };
 	    
@@ -296,6 +292,10 @@ QUnit.test("map", function(assert) {
     assert.deepEqual(collToArray(map(double, coll([1, 2, 3, 4]))), [2, 4, 6, 8], "collection");
     assert.deepEqual(collToArray(map(div, parallel(coll([5, 10, 30]), coll([1, 2, 6])))), [5, 5, 5], "parallel");
     assert.deepEqual(collToArray(map(double, map(div, parallel(coll([5, 10, 30]), coll([1, 2, 6]))))), [10, 10, 10], "chained");
+    
+    var c = map(double, coll([1, 2, 3, 4]));
+    collToArray(c);
+    assert.deepEqual(collToArray(c), [2, 4, 6, 8], "multipass");
 });
 
 QUnit.test("filter", function(assert) {
@@ -303,6 +303,10 @@ QUnit.test("filter", function(assert) {
     assert.deepEqual(collToArray(filter(even, coll([1, 2, 3, 4]))), [2, 4], "collection");
     assert.deepEqual(collToArray(filter(even, map(double, coll([1, 2, 3, 4])))), [2, 4, 6, 8], "order1");
     assert.deepEqual(collToArray(map(double, filter(even, coll([1, 2, 3, 4])))), [4, 8], "order2");
+
+    var c = filter(even, coll([1, 2, 3, 4]));
+    collToArray(c);
+    assert.deepEqual(collToArray(c), [2, 4], "multipass");
 });
 
 QUnit.test("take", function(assert) {
@@ -318,16 +322,27 @@ QUnit.test("take", function(assert) {
     assert.deepEqual(collToArray(parallel(coll([1, 2, 3, 4, 5, 6]),
 					  take(3, coll(["x", "y", "z", "w"])))),
 		     [[1, "x"], [2, "y"], [3, "z"]], "parallel");
+
+    var c = take(3, coll([1, 2, 3, 4]));
+    collToArray(c);
+    assert.deepEqual(collToArray(c), [1, 2, 3], "multipass");
 });
 
 QUnit.test("concat", function(assert) {
+
     assert.deepEqual(collToArray(concat(coll([]), coll([]))), [], "both empty");
     assert.deepEqual(collToArray(concat(coll([1, 2, 3]), coll([]))), [1, 2, 3], "second empty");
     assert.deepEqual(collToArray(concat(coll([]), coll([1, 2, 3]))), [1, 2, 3], "first empty");
     assert.deepEqual(collToArray(concat(coll([1, 2, 3]), coll([4, 5, 6]))), [1, 2, 3, 4, 5, 6], "normal");
     
     assert.deepEqual(collToArray(take(0, concat(coll([1, 2, 3]), coll([4, 5, 6])))), [], "take none");
+
+
+
+    
     assert.deepEqual(collToArray(take(1, concat(coll([1, 2, 3]), coll([4, 5, 6])))), [1], "take one");
+
+
     assert.deepEqual(collToArray(take(3, concat(coll([1, 2, 3]), coll([4, 5, 6])))), [1, 2, 3], "take first");
     assert.deepEqual(collToArray(take(4, concat(coll([1, 2, 3]), coll([4, 5, 6])))), [1, 2, 3, 4], "take first and part of second");
     assert.deepEqual(collToArray(take(6, concat(coll([1, 2, 3]), coll([4, 5, 6])))), [1, 2, 3, 4, 5, 6], "take both");
@@ -340,6 +355,10 @@ QUnit.test("concat", function(assert) {
 		      [3, 3],
 		      [4, 4],
 		      [5, 5]], "parallel");
+
+    var c = concat(coll([1, 2, 3]), coll([4, 5, 6]));
+    collToArray(c);
+    assert.deepEqual(collToArray(c), [1, 2, 3, 4, 5, 6], "multipass");
 });
 
 QUnit.test("count", function(assert) {
@@ -351,6 +370,10 @@ QUnit.test("count", function(assert) {
 	assert.equal(res, 4, "async");
 	done();
     });
+
+    var c = coll([1, 2, 3]);
+    count(c);
+    assert.equal(count(c), 3, "multipass");
 });
 
 QUnit.test("nth", function(assert) {
@@ -368,6 +391,12 @@ QUnit.test("nth", function(assert) {
 	assert.equal(res, 3, "async");
 	done();
     });
+
+    var c = coll([1, 2, 3]);
+    nth(0, c);
+    nth(1, c);
+    nth(2, c);
+    assert.equal(nth(2, c), 3, "multipass");
 });
 
 // **************************

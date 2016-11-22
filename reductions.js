@@ -10,14 +10,25 @@ function identity(x) {
     return x;
 }
 
-function ReducedException(result) {
+function ReducedException(result, include) {
     this.name = "ReducedException";
     this.message = "'reduced' not supported in this context!";
     this.result = result;
+    this.include = include;
 }
 
-function reduced(x) {
-    throw new ReducedException(x);
+function reduced(x, include) {
+    throw new ReducedException(x, include);
+}
+
+function handleReducedException(e, callback, data) {
+    if(e instanceof ReducedException) {
+	callback(e.result, e.include ? function(newData) {
+	    callback(e.result, null, newData);
+	} : null, data);
+    }
+    else
+	throw e;
 }
 
 function reductions(r, accum, callback, colls) {
@@ -46,10 +57,7 @@ function reductions(r, accum, callback, colls) {
 			});
                     }, nestedData);
 		}catch(e) {
-		    if(e instanceof ReducedException)
-			callback(e.result, null, nestedData);
-		    else
-			throw e;
+		    handleReducedException(e, callback, nestedData);
 		}
             } else {
                 rowRest[0]({
@@ -105,11 +113,7 @@ function collFromArray(arr) {
 			}, data);
                     }
 		}catch(e) {
-		    if(e instanceof ReducedException) {
-			callback(e.result, null, data);
-		    }
-		    else
-			throw e;
+		    handleReducedException(e, callback, data);
 		}
 	    };
 	    
@@ -141,11 +145,7 @@ function range(start, step, end) {
 			}, data);
                     }
 		}catch(e) {
-		    if(e instanceof ReducedException) {
-			callback(e.result, null, data);
-		    }
-		    else
-			throw e;
+		    handleReducedException(e, callback, data);
 		}
 	    };
 	    
@@ -154,6 +154,67 @@ function range(start, step, end) {
 	    };
 	}
     };
+}
+
+function consume(input) {
+    var i = 0;
+    var output = [];
+    
+    while(i < input.length) {
+	if(input[i] === 0) {
+	    ++i;
+	    var cacheEnabled = true;
+	    var res = handler({
+		cache: [],
+		reduce: function(r, accum) {
+		    var cache = this.cache;
+		    var ctx = {
+			flag: false,
+			reduced: function(x) {
+			    this.flag = true;
+			    return x;
+			}
+		    };
+		    
+		    for(var j = 0; j < cache.length; ++j) {
+			accum = r(accum, cache[j], ctx);
+			if(ctx.flag)
+			    break;
+		    }
+		    
+		    if(!ctx.flag) {
+			while(i < input.length) {
+			    var x = input[i];
+			    if(cacheEnabled)
+				this.cache.push(x);
+			    
+			    accum = r(accum, x, ctx);
+			    ++i;
+			    if(ctx.flag)
+				break;
+			}
+		    }
+		    
+		    return accum;
+		},
+	    });
+	    
+	    cacheEnabled = false;
+	    
+	    /*
+	      res.reduce(function(accum, x) {
+	      accum.push(x);
+	      return accum;
+	      }, []);*/
+	    
+	    output = output.concat(toArray(res));
+	}else {
+	    output.push(input[i]);
+	    ++i;
+	}
+    }
+    
+    return output;
 }
 
 // **************
@@ -219,16 +280,26 @@ function filter(p, coll) {
     };
 }
 
-function take(n, coll) {
+function take(n0, coll) {
     return {
 	reductions: function(r, accum, callback) {
+	    var n = n0;
+	    
+	    if(n < 1)
+		return function(data) {
+		    callback(accum, null, data);
+		};
+	    
 	    return coll.reductions(function(accum, x) {
-		if(n > 0) {
+		console.log(accum, x, n);
+		if(n === 0) {
+		    reduced(accum);
+		}else if(n === 1) {
+		    --n;
+		    reduced(r(accum, x), true);
+		}else {
 		    --n;
 		    return r(accum, x);
-		}
-		else {
-		    reduced(accum);
 		}
 	    }, accum, callback);
 	}
@@ -239,6 +310,8 @@ function concat(a, b) {
     return {
 	reductions: function(r, accum, callback) {
 	    return a.reductions(r, accum, function(e, next, data) {
+		console.log(e);
+		
 		if(next) {
 		    callback(e, next, data);
 		}
