@@ -20,19 +20,23 @@ function asyncCollFromArray(arr) {
     return {
 	reductions: function(r, accum, callback) {
 	    var fn = function(idx, accum, data) {
-		if(idx < arr.length - 1) {
-		    var accum1 = r(accum, arr[idx]);
-		    setTimeout(function() {
-			callback(accum1, function(newData) {
-			    fn(idx + 1, accum1, newData);
-			}, data);
-		    }, 100);
-		}
-		else if(idx === arr.length - 1) {
-		    callback(r(accum, arr[idx]), null, data);
-		}
-		else {
-		    callback(accum, null, data);
+		try{
+                    if (idx >= arr.length)
+			callback(accum, null, data);
+                    else {
+			var newAccum = r(accum, arr[idx]);
+			setTimeout(function() {
+			    callback(newAccum, function(newData) {
+				fn(idx + 1, newAccum, newData);
+			    }, data);
+			}, 100);
+                    }
+		}catch(e) {
+		    if(e instanceof ReducedException) {
+			callback(e.result, null, data);
+		    }
+		    else
+			throw e;
 		}
 	    };
 	    
@@ -45,11 +49,14 @@ function asyncCollFromArray(arr) {
 
 function testReductions(assert, coll, f, initial, expectations, stopAfter) {
     var counter = 0;
+    var tmp = expectations;
+    expectations = expectations.slice();
+    expectations.push(tmp.length > 0 ? tmp[tmp.length - 1] : initial);
+    
     var done = assert.async(expectations.length);
     
     coll.reductions(function(accum, ...args) {
-	var tmp = f.apply(null, [accum].concat(args));
-	return stopAfter && counter === stopAfter - 1 ? reduced(tmp) : tmp;
+	return stopAfter && counter === stopAfter ? reduced(accum) : f.apply(null, [accum].concat(args));
     }, initial, function(accum, next, data) {
 	++counter;
 	console.log(counter);
@@ -78,7 +85,7 @@ QUnit.test("creation", function(assert) {
 });
 
 QUnit.test("reductions (empty)", function(assert) {
-    testReductions(assert, coll([]), div, "foo", ["foo"]);
+    testReductions(assert, coll([]), div, "foo", []);
 });
 
 
@@ -87,7 +94,7 @@ QUnit.test("reductions", function(assert) {
 });
 
 QUnit.test("reductions (empty, immediate stop)", function(assert) {
-    testReductions(assert, coll([]), div, "foo", ["foo"], 1);
+    testReductions(assert, coll([]), div, "foo", [], 1);
 });
 
 QUnit.test("reductions (immediate stop)", function(assert) {
@@ -105,7 +112,7 @@ QUnit.test("reductions (stop)", function(assert) {
 QUnit.module("Async Array Collection");
 
 QUnit.test("reductions (empty)", function(assert) {
-    testReductions(assert, asyncCollFromArray([]), div, "foo", ["foo"]);
+    testReductions(assert, asyncCollFromArray([]), div, "foo", []);
 });
 
 QUnit.test("reductions", function(assert) {
@@ -124,7 +131,7 @@ QUnit.test("creation", function(assert) {
 });
 
 QUnit.test("reductions (single empty)", function(assert) {
-    testReductions(assert, parallel(coll([])), div, "foo", ["foo"]);
+    testReductions(assert, parallel(coll([])), div, "foo", []);
 });
 
 QUnit.test("reductions (single)", function(assert) {
@@ -132,15 +139,15 @@ QUnit.test("reductions (single)", function(assert) {
 });
 
 QUnit.test("reductions (two, both empty)", function(assert) {
-    testReductions(assert, parallel(coll([]), coll([])), div, "foo", ["foo"]);
+    testReductions(assert, parallel(coll([]), coll([])), div, "foo", []);
 });
 
 QUnit.test("reductions (two, first empty)", function(assert) {
-    testReductions(assert, parallel(coll([]), coll([1, 2, 3])), div, "foo", ["foo"]);
+    testReductions(assert, parallel(coll([]), coll([1, 2, 3])), div, "foo", []);
 });
 
 QUnit.test("reductions (two, second empty)", function(assert) {
-    testReductions(assert, parallel(coll([1, 2, 3]), coll([])), div, "foo", ["foo"]);
+    testReductions(assert, parallel(coll([1, 2, 3]), coll([])), div, "foo", []);
 });
 
 QUnit.test("reductions (two, same length, ignore accum)", function(assert) {
@@ -292,6 +299,6 @@ QUnit.test("take", function(assert) {
     assert.deepEqual(collToArray(map(double, take(3, coll([1, 2, 3, 4])))), [2, 4, 6], "order2");
 
     assert.deepEqual(collToArray(parallel(coll([1, 2, 3, 4, 5, 6]),
-					  take(2, coll(["x", "y", "z", "w"])))),
+					  take(3, coll(["x", "y", "z", "w"])))),
 		     [[1, "x"], [2, "y"], [3, "z"]]);
 });

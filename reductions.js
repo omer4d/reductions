@@ -23,65 +23,58 @@ function reduced(x) {
 function reductions(r, accum, callback, colls) {
     var sentinel = Object.create(null);
     var job = function(e, next, data) {
-	var rowRest = data.rowRest;
-	var nextRow = data.nextRow;
-	var args = data.args.concat(e);
-	var accum = data.accum;
-	var nestedData = data.nestedData;
+        var rowRest = data.rowRest;
+        var nextRow = data.nextRow;
+        var args = data.args.concat(e);
+        var accum = data.accum;
+        var nestedData = data.nestedData;
 
-	if(e === sentinel) {
-	    callback(accum, null, nestedData);
-	}
-
-	else if(rowRest.length === 0) {
-    	    var newRow = nextRow.concat(next);
-	    try {
-    		var newAccum = r.apply(null, [accum].concat(args));
-    		
-    		if(newRow.every(identity)) {
-    		    callback(newAccum, function(newNestedData) {
-	    		newRow[0]({
-    			    rowRest: newRow.slice(1),
-		   	    nextRow: [],
-	    		    args: [],
-	    		    accum: newAccum,
-	    		    nestedData: newNestedData
-	    		});
-    		    }, nestedData);
-    		}
-    		else {
-    		    callback(newAccum, null, nestedData);
-    		}
-	    }catch(e) {
-		if(e instanceof ReducedException)
-		    callback(e.result, null, nestedData);
-		else
-		    throw e;
-	    }
-    	}
-    	else {
-    	    rowRest[0]({
-    		rowRest: rowRest.slice(1),
-    		nextRow: nextRow.concat(next),
-    		args: args,
-    		accum: accum,
-    		nestedData: nestedData
-    	    });
-    	}
+        if (next === null)
+            callback(accum, null, nestedData);
+        else {
+            if (rowRest.length === 0) {
+                var newRow = nextRow.concat(next);
+		try {
+                    var newAccum = r.apply(null, [accum].concat(args));
+                    callback(newAccum, function(newNestedData) {
+			newRow[0]({
+                            rowRest: newRow.slice(1),
+                            nextRow: [],
+                            args: [],
+                            accum: newAccum,
+                            nestedData: newNestedData
+			});
+                    }, nestedData);
+		}catch(e) {
+		    if(e instanceof ReducedException)
+			callback(e.result, null, nestedData);
+		    else
+			throw e;
+		}
+            } else {
+                rowRest[0]({
+                    rowRest: rowRest.slice(1),
+                    nextRow: nextRow.concat(next),
+                    args: args,
+                    accum: accum,
+                    nestedData: nestedData
+                });
+            }
+        }
     };
-    
+
     var rs = colls.map(function(coll) {
-	return coll.reductions(pack, sentinel, job);
+        return coll.reductions(pack, sentinel, job);
     });
-    
+
     return function(data) {
-	rs[0]({
-	    rowRest: rs.slice(1),
-	    nextRow: [],
-	    args: [],
-	    accum: accum,
-	    nestedData: data
-	});
+        rs[0]({
+            rowRest: rs.slice(1),
+            nextRow: [],
+            args: [],
+            accum: accum,
+            nestedData: data
+        });
     };
 }
 
@@ -103,21 +96,18 @@ function collFromArray(arr) {
 	reductions: function(r, accum, callback) {
 	    var fn = function(idx, accum, data) {
 		try{
-		    if(idx < arr.length - 1) {
-			var accum1 = r(accum, arr[idx]);
-			callback(accum1, function(newData) {
-			    fn(idx + 1, accum1, newData);
-			}, data);
-		    }
-		    else if(idx === arr.length - 1) {
-			callback(r(accum, arr[idx]), null, data);
-		    }
-		    else {
+                    if (idx >= arr.length)
 			callback(accum, null, data);
-		    }
+                    else {
+			var newAccum = r(accum, arr[idx]);
+			callback(newAccum, function(newData) {
+                            fn(idx + 1, newAccum, newData);
+			}, data);
+                    }
 		}catch(e) {
-		    if(e instanceof ReducedException)
+		    if(e instanceof ReducedException) {
 			callback(e.result, null, data);
+		    }
 		    else
 			throw e;
 		}
@@ -200,19 +190,13 @@ function take(n, coll) {
     return {
 	reductions: function(r, accum, callback) {
 	    return coll.reductions(function(accum, x) {
-
 		if(n > 0) {
 		    --n;
 		    return r(accum, x);
-		    //console.log("FOO");
 		}
 		else {
 		    reduced(accum);
 		}
-		
-		//var tmp = n < 1 ? accum : r(accum, x);
-		//--n;
-		//return tmp;
 	    }, accum, callback);
 	}
     };
