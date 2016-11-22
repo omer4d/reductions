@@ -8,6 +8,14 @@ function push(arr, x) {
     return arr;
 }
 
+function double(x) {
+    return x * 2;
+}
+
+function even(x) {
+    return (x % 2) === 0;
+}
+
 function asyncCollFromArray(arr) {
     return {
 	reductions: function(r, accum, callback) {
@@ -35,12 +43,16 @@ function asyncCollFromArray(arr) {
     };
 }
 
-function testReductions(assert, coll, f, initial, expectations) {
+function testReductions(assert, coll, f, initial, expectations, stopAfter) {
     var counter = 0;
     var done = assert.async(expectations.length);
     
-    coll.reductions(f, initial, function(accum, next, data) {
+    coll.reductions(function(accum, ...args) {
+	var tmp = f.apply(null, [accum].concat(args));
+	return stopAfter && counter === stopAfter - 1 ? reduced(tmp) : tmp;
+    }, initial, function(accum, next, data) {
 	++counter;
+	console.log(counter);
 	assert.deepEqual(accum, expectations[counter - 1], "accum " + counter);
 	assert.deepEqual(data, counter, "data " + counter);
 	if(counter === expectations.length) {
@@ -65,12 +77,27 @@ QUnit.test("creation", function(assert) {
     assert.ok(coll(new Array()).reductions, "from new Array()");
 });
 
+
+
 QUnit.test("reductions (empty)", function(assert) {
     testReductions(assert, coll([]), div, "foo", ["foo"]);
 });
 
+
 QUnit.test("reductions", function(assert) {
     testReductions(assert, coll([2, 3, 4]), div, 1, [1/2, 1/2/3, 1/2/3/4]);
+});
+
+QUnit.test("reductions (empty, immediate stop)", function(assert) {
+    testReductions(assert, coll([]), div, "foo", ["foo"], 1);
+});
+
+QUnit.test("reductions (immediate stop)", function(assert) {
+    testReductions(assert, coll([2, 3, 4]), div, 1, [1/2], 1);
+});
+
+QUnit.test("reductions (stop)", function(assert) {
+    testReductions(assert, coll([2, 3, 4, 5, 6, 7, 8]), div, 1, [1/2, 1/2/3, 1/2/3/4], 3);
 });
 
 
@@ -221,4 +248,29 @@ QUnit.test("collToArray", function(assert) {
 		     [[1, "x"],
 		      [2, "y"],
 		      [3, "z"]], "parallel collection");
+});
+
+QUnit.test("map", function(assert) {
+    assert.deepEqual(collToArray(map(double, coll([]))), [], "empty collection");
+    assert.deepEqual(collToArray(map(double, coll([1, 2, 3, 4]))), [2, 4, 6, 8], "collection");
+    assert.deepEqual(collToArray(map(div, parallel(coll([5, 10, 30]), coll([1, 2, 6])))), [5, 5, 5], "parallel");
+    assert.deepEqual(collToArray(map(double, map(div, parallel(coll([5, 10, 30]), coll([1, 2, 6]))))), [10, 10, 10], "chained");
+});
+
+QUnit.test("filter", function(assert) {
+    assert.deepEqual(collToArray(filter(even, coll([]))), [], "empty collection");
+    assert.deepEqual(collToArray(filter(even, coll([1, 2, 3, 4]))), [2, 4], "collection");
+    assert.deepEqual(collToArray(filter(even, map(double, coll([1, 2, 3, 4])))), [2, 4, 6, 8], "order1");
+    assert.deepEqual(collToArray(map(double, filter(even, coll([1, 2, 3, 4])))), [4, 8], "order2");
+});
+
+QUnit.test("take", function(assert) {
+    assert.deepEqual(collToArray(take(0, coll([]))), [], "empty collection, take none");
+    assert.deepEqual(collToArray(take(1, coll([]))), [], "empty collection, take 1");
+    assert.deepEqual(collToArray(take(0, coll([1, 2, 3]))), [], "collection, take none");
+    assert.deepEqual(collToArray(take(10, coll([1, 2, 3]))), [1, 2, 3], "collection, take over");
+    assert.deepEqual(collToArray(take(2, coll([1, 2, 3]))), [1, 2], "collection");
+    
+    assert.deepEqual(collToArray(take(3, map(double, coll([1, 2, 3, 4])))), [2, 4, 6], "order1");
+    assert.deepEqual(collToArray(map(double, take(3, coll([1, 2, 3, 4])))), [2, 4, 6], "order2");
 });

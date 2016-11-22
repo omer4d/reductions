@@ -35,22 +35,29 @@ function reductions(r, accum, callback, colls) {
 
 	else if(rowRest.length === 0) {
     	    var newRow = nextRow.concat(next);
-    	    var newAccum = r.apply(null, [accum].concat(args));
-    	    
-    	    if(newRow.every(identity)) {
-    		callback(newAccum, function(newNestedData) {
-	    	    newRow[0]({
-    			rowRest: newRow.slice(1),
-		   	nextRow: [],
-	    		args: [],
-	    		accum: newAccum,
-	    		nestedData: newNestedData
-	    	    });
-    		}, nestedData);
-    	    }
-    	    else {
-    		callback(newAccum, null, nestedData);
-    	    }
+	    try {
+    		var newAccum = r.apply(null, [accum].concat(args));
+    		
+    		if(newRow.every(identity)) {
+    		    callback(newAccum, function(newNestedData) {
+	    		newRow[0]({
+    			    rowRest: newRow.slice(1),
+		   	    nextRow: [],
+	    		    args: [],
+	    		    accum: newAccum,
+	    		    nestedData: newNestedData
+	    		});
+    		    }, nestedData);
+    		}
+    		else {
+    		    callback(newAccum, null, nestedData);
+    		}
+	    }catch(e) {
+		if(e instanceof ReducedException)
+		    callback(e.result, null, nestedData);
+		else
+		    throw e;
+	    }
     	}
     	else {
     	    rowRest[0]({
@@ -193,9 +200,19 @@ function take(n, coll) {
     return {
 	reductions: function(r, accum, callback) {
 	    return coll.reductions(function(accum, x) {
-		var tmp = n < 1 ? accum : r(accum, x);
-		--n;
-		return tmp;
+
+		if(n > 0) {
+		    --n;
+		    return r(accum, x);
+		    //console.log("FOO");
+		}
+		else {
+		    reduced(accum);
+		}
+		
+		//var tmp = n < 1 ? accum : r(accum, x);
+		//--n;
+		//return tmp;
 	    }, accum, callback);
 	}
     };

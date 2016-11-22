@@ -66,9 +66,9 @@ function testReductions(assert, coll, f, initial, expectations, stopAfter) {
     })(1);
 }
 
-// *********
-// * Tests *
-// *********
+// **************************
+// * Array Collection Tests *
+// **************************
 
 QUnit.module("Array Collection");
 
@@ -76,8 +76,6 @@ QUnit.test("creation", function(assert) {
     assert.ok(coll([]).reductions, "from []");
     assert.ok(coll(new Array()).reductions, "from new Array()");
 });
-
-
 
 QUnit.test("reductions (empty)", function(assert) {
     testReductions(assert, coll([]), div, "foo", ["foo"]);
@@ -100,6 +98,9 @@ QUnit.test("reductions (stop)", function(assert) {
     testReductions(assert, coll([2, 3, 4, 5, 6, 7, 8]), div, 1, [1/2, 1/2/3, 1/2/3/4], 3);
 });
 
+// ********************************
+// * Async Array Collection Tests *
+// ********************************
 
 QUnit.module("Async Array Collection");
 
@@ -111,6 +112,9 @@ QUnit.test("reductions", function(assert) {
     testReductions(assert, asyncCollFromArray([2, 3, 4]), div, 1, [1/2, 1/2/3, 1/2/3/4]);
 });
 
+// *****************************
+// * Parallel Collection Tests *
+// *****************************
 
 QUnit.module("Parallel Collection");
 
@@ -194,6 +198,19 @@ QUnit.test("reductions (two, both async)", function(assert) {
     }, [], [[2], [2, 6], [2, 6, 12]]);
 });
 
+QUnit.test("reductions (single, stop early)", function(assert) {
+    testReductions(assert, parallel(coll([2, 3, 4, 5, 6, 7, 8])), div, 1, [1/2, 1/2/3, 1/2/3/4], 3);
+});
+
+QUnit.test("reductions (two async, stop early)", function(assert) {
+    testReductions(assert, parallel(asyncCollFromArray([1, 2, 3, 4, 5, 6]), asyncCollFromArray([2, 3, 4, 5, 6, 7])), function(accum, x, y) {
+	return push(accum, x * y);
+    }, [], [[2], [2, 6], [2, 6, 12]], 3);
+});
+
+// ******************************
+// * Collection Operation Tests *
+// ******************************
 
 
 QUnit.module("Operations");
@@ -273,4 +290,8 @@ QUnit.test("take", function(assert) {
     
     assert.deepEqual(collToArray(take(3, map(double, coll([1, 2, 3, 4])))), [2, 4, 6], "order1");
     assert.deepEqual(collToArray(map(double, take(3, coll([1, 2, 3, 4])))), [2, 4, 6], "order2");
+
+    assert.deepEqual(collToArray(parallel(coll([1, 2, 3, 4, 5, 6]),
+					  take(2, coll(["x", "y", "z", "w"])))),
+		     [[1, "x"], [2, "y"], [3, "z"]]);
 });
