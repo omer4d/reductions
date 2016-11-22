@@ -16,6 +16,23 @@ function even(x) {
     return (x % 2) === 0;
 }
 
+function prime(n) {
+    if(n % 1 || n<2)
+	return false; 
+    if(n % 2 == 0)
+	return (n == 2);
+    if(n % 3 == 0)
+	return (n == 3);
+    var m = Math.sqrt(n);
+    for (var i = 5; i <= m; i += 6) {
+	if(n % i == 0)
+	    return false;
+	if(n % (i+2) == 0)
+	    return false;
+    }
+    return true;
+}
+
 function asyncCollFromArray(arr) {
     return {
 	reductions: function(r, accum, callback) {
@@ -29,7 +46,7 @@ function asyncCollFromArray(arr) {
 			    callback(newAccum, function(newData) {
 				fn(idx + 1, newAccum, newData);
 			    }, data);
-			}, 100);
+			}, 0);
                     }
 		}catch(e) {
 		    if(e instanceof ReducedException) {
@@ -300,5 +317,90 @@ QUnit.test("take", function(assert) {
 
     assert.deepEqual(collToArray(parallel(coll([1, 2, 3, 4, 5, 6]),
 					  take(3, coll(["x", "y", "z", "w"])))),
-		     [[1, "x"], [2, "y"], [3, "z"]]);
+		     [[1, "x"], [2, "y"], [3, "z"]], "parallel");
+});
+
+QUnit.test("concat", function(assert) {
+    assert.deepEqual(collToArray(concat(coll([]), coll([]))), [], "both empty");
+    assert.deepEqual(collToArray(concat(coll([1, 2, 3]), coll([]))), [1, 2, 3], "second empty");
+    assert.deepEqual(collToArray(concat(coll([]), coll([1, 2, 3]))), [1, 2, 3], "first empty");
+    assert.deepEqual(collToArray(concat(coll([1, 2, 3]), coll([4, 5, 6]))), [1, 2, 3, 4, 5, 6], "normal");
+    
+    assert.deepEqual(collToArray(take(0, concat(coll([1, 2, 3]), coll([4, 5, 6])))), [], "take none");
+    assert.deepEqual(collToArray(take(1, concat(coll([1, 2, 3]), coll([4, 5, 6])))), [1], "take one");
+    assert.deepEqual(collToArray(take(3, concat(coll([1, 2, 3]), coll([4, 5, 6])))), [1, 2, 3], "take first");
+    assert.deepEqual(collToArray(take(4, concat(coll([1, 2, 3]), coll([4, 5, 6])))), [1, 2, 3, 4], "take first and part of second");
+    assert.deepEqual(collToArray(take(6, concat(coll([1, 2, 3]), coll([4, 5, 6])))), [1, 2, 3, 4, 5, 6], "take both");
+    assert.deepEqual(collToArray(take(10, concat(coll([1, 2, 3]), coll([4, 5, 6])))), [1, 2, 3, 4, 5, 6], "take excess");
+
+    assert.deepEqual(collToArray(parallel(coll([1, 2, 3, 4, 5]),
+					  concat(coll([1, 2, 3]), coll([4, 5, 6])))),
+		     [[1, 1],
+		      [2, 2],
+		      [3, 3],
+		      [4, 4],
+		      [5, 5]], "parallel");
+});
+
+QUnit.test("count", function(assert) {
+    assert.equal(count(coll([])), 0, "empty");
+    assert.equal(count(coll([1, 2, 3, 4])), 4, "non-empty");
+
+    var done = assert.async();
+    count(asyncCollFromArray([1, 2, 3, 4]), function(res) {
+	assert.equal(res, 4, "async");
+	done();
+    });
+});
+
+QUnit.test("nth", function(assert) {
+    assert.equal(nth(-5, coll([])), undefined, "negative out of bounds, empty");
+    assert.equal(nth(100, coll([])), undefined, "positive out of bounds, empty");
+    assert.equal(nth(-5, coll([1, 2, 3])), undefined, "negative out of bounds");
+    assert.equal(nth(100, coll([1, 2, 3])), undefined, "positive out of bounds");
+    
+    assert.equal(nth(0, coll([1, 2, 3])), 1, "first");
+    assert.equal(nth(1, coll([1, 2, 3])), 2, "middle");
+    assert.equal(nth(2, coll([1, 2, 3])), 3, "last");
+
+    var done = assert.async();
+    nth(2, asyncCollFromArray([1, 2, 3, 4]), function(res) {
+	assert.equal(res, 3, "async");
+	done();
+    });
+});
+
+// **************************
+// * Extra Collection Tests *
+// **************************
+
+QUnit.module("Range Collection");
+
+QUnit.test("creation", function(assert) {
+    assert.ok(range(0, 1).reductions);
+});
+
+QUnit.test("reductions (empty)", function(assert) {
+    testReductions(assert, range(0, 1, 0), div, "foo", []);
+});
+
+QUnit.test("reductions", function(assert) {
+    testReductions(assert, range(2, 1, 5), div, 1, [1/2, 1/2/3, 1/2/3/4]);
+});
+
+QUnit.test("reductions (negative step)", function(assert) {
+    testReductions(assert, range(4, -1, 0), div, 5, [5/4, 5/4/3, 5/4/3/2, 5/4/3/2/1]);
+});
+
+QUnit.test("operations", function(assert) {
+    assert.deepEqual(collToArray(take(5, range(1, 1))), [1, 2, 3, 4, 5], "take from infinite");
+    assert.deepEqual(collToArray(map(double, range(1, 1, 5))), [2, 4, 6, 8], "map");
+    assert.deepEqual(collToArray(map(function(a, b) {
+	return [a, b];
+    }, parallel(range(1, 1),
+		coll(["a", "b", "c"])))),
+		     [[1, "a"],
+		      [2, "b"],
+		      [3, "c"]], "zip infinite with array collection");
+    assert.deepEqual(collToArray(take(10, filter(prime, range(1, 1)))), [2, 3, 5, 7, 11, 13, 17, 19, 23, 29], "first 10 primes");
 });

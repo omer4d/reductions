@@ -87,9 +87,9 @@ function parallel(...colls) {
     };
 }
 
-// **************
-// * Operations *
-// **************
+// ***************
+// * Collections *
+// ***************
 
 function collFromArray(arr) {
     return {
@@ -126,6 +126,39 @@ function coll(x) {
     else
 	return x.collection();
 }
+
+function range(start, step, end) {
+    return {
+	reductions: function(r, accum, callback) {
+	    var fn = function(x, accum, data) {
+		try {
+                    if (end !== undefined && (step >= 0 && x >= end || step < 0 && x <= end))
+			callback(accum, null, data);
+                    else {
+			var newAccum = r(accum, x);
+			callback(newAccum, function(newData) {
+                            fn(x + step, newAccum, newData);
+			}, data);
+                    }
+		}catch(e) {
+		    if(e instanceof ReducedException) {
+			callback(e.result, null, data);
+		    }
+		    else
+			throw e;
+		}
+	    };
+	    
+	    return function(data) {
+		fn(start, accum, data);
+	    };
+	}
+    };
+}
+
+// **************
+// * Operations *
+// **************
 
 function reduce(r, accum, coll, callback) {
     var res, done, callback;
@@ -200,4 +233,39 @@ function take(n, coll) {
 	    }, accum, callback);
 	}
     };
+}
+
+function concat(a, b) {
+    return {
+	reductions: function(r, accum, callback) {
+	    return a.reductions(r, accum, function(e, next, data) {
+		if(next) {
+		    callback(e, next, data);
+		}
+		else {
+		    b.reductions(r, e, callback)(data);
+		}
+	    });
+	}
+    };
+}
+
+function count(coll, callback) {
+    return reduce(function(accum, x) {
+	return accum + 1;
+    }, 0, coll, callback);
+}
+
+function nth(n, coll, callback) {
+    return reduce(function(accum, x) {
+	if(n < 0) {
+	    reduced(accum);
+	}else if(n === 0) {
+	    --n;
+	    return x;
+	}else {
+	    --n;
+	    return accum;
+	}
+    }, undefined, coll, callback);
 }
