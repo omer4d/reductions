@@ -156,66 +156,50 @@ function range(start, step, end) {
     };
 }
 
-function consume(input) {
-    var i = 0;
-    var output = [];
-    
-    while(i < input.length) {
-	if(input[i] === 0) {
-	    ++i;
-	    var cacheEnabled = true;
-	    var res = handler({
-		cache: [],
-		reduce: function(r, accum) {
-		    var cache = this.cache;
-		    var ctx = {
-			flag: false,
-			reduced: function(x) {
-			    this.flag = true;
-			    return x;
-			}
-		    };
-		    
-		    for(var j = 0; j < cache.length; ++j) {
-			accum = r(accum, cache[j], ctx);
-			if(ctx.flag)
-			    break;
+function streamColl(self) {
+    return {
+	cache: [],
+	reductions: function(r, accum, callback) {
+	    var cache = this.cache;
+	    
+	    var fn1 = function(cache, accum, data) {
+		if(self.end())
+		    return callback(accum, null, data);
+		else {
+		    var tmp = self.next();
+		    cache.push(tmp);
+		    try{
+			var newAccum = r(accum, tmp);
+			callback(newAccum, function(newData) {
+			    fn1(cache, newAccum, newData);
+			}, data);
+		    }catch(e) {
+			handleReducedException(e, callback, data);
 		    }
-		    
-		    if(!ctx.flag) {
-			while(i < input.length) {
-			    var x = input[i];
-			    if(cacheEnabled)
-				this.cache.push(x);
-			    
-			    accum = r(accum, x, ctx);
-			    ++i;
-			    if(ctx.flag)
-				break;
-			}
+		}
+	    };
+	    
+	    var fn2 = function(cache, idx, accum, data) {
+		if(idx >= cache.length)
+		    return fn1(cache, accum, data);
+		else {
+		    try {
+			var newAccum = r(accum, cache[idx]);
+			callback(newAccum, function(newData) {
+			    fn2(cache, idx + 1, newAccum, newData);
+			}, data);
+		    }catch(e) {
+			handleReducedException(e, callback, data);
 		    }
-		    
-		    return accum;
-		},
-	    });
+		}
+	    };
 	    
-	    cacheEnabled = false;
-	    
-	    /*
-	      res.reduce(function(accum, x) {
-	      accum.push(x);
-	      return accum;
-	      }, []);*/
-	    
-	    output = output.concat(toArray(res));
-	}else {
-	    output.push(input[i]);
-	    ++i;
+	    return function(data) {
+		fn2(cache, 0, accum, data);
+	    };
 	}
-    }
-    
-    return output;
-}
+    };
+};
 
 // **************
 // * Operations *
@@ -291,7 +275,6 @@ function take(n0, coll) {
 		};
 	    
 	    return coll.reductions(function(accum, x) {
-		console.log(accum, x, n);
 		if(n === 0) {
 		    reduced(accum);
 		}else if(n === 1) {
@@ -299,6 +282,23 @@ function take(n0, coll) {
 		    reduced(r(accum, x), true);
 		}else {
 		    --n;
+		    return r(accum, x);
+		}
+	    }, accum, callback);
+	}
+    };
+}
+
+function drop(n0, coll) {
+    return {
+	reductions: function(r, accum, callback) {
+	    var n = n0;
+	    
+	    return coll.reductions(function(accum, x) {
+		if(n > 0) {
+		    --n;
+		    return accum;
+		}else {
 		    return r(accum, x);
 		}
 	    }, accum, callback);

@@ -60,6 +60,20 @@ function asyncCollFromArray(arr) {
     };
 }
 
+function ArrayStream(data) {
+    this.data = data;
+    this.pos = 0;
+}
+
+ArrayStream.prototype.next = function() {
+    return this.data[this.pos++];
+};
+
+ArrayStream.prototype.end = function() {
+    return this.pos >= this.data.length;
+};
+
+
 function testReductions(assert, coll, f, initial, expectations, stopAfter) {
     var counter = 0;
     var tmp = expectations;
@@ -328,6 +342,25 @@ QUnit.test("take", function(assert) {
     assert.deepEqual(collToArray(c), [1, 2, 3], "multipass");
 });
 
+QUnit.test("drop", function(assert) {
+    assert.deepEqual(collToArray(drop(0, coll([]))), [], "empty collection, drop none");
+    assert.deepEqual(collToArray(drop(1, coll([]))), [], "empty collection, drop 1");
+    assert.deepEqual(collToArray(drop(0, coll([1, 2, 3]))), [1, 2, 3], "collection, drop none");
+    assert.deepEqual(collToArray(drop(10, coll([1, 2, 3]))), [], "collection, drop over");
+    assert.deepEqual(collToArray(drop(2, coll([1, 2, 3, 4]))), [3, 4], "collection");
+    
+    assert.deepEqual(collToArray(drop(3, map(double, coll([1, 2, 3, 4, 5])))), [8, 10], "order1");
+    assert.deepEqual(collToArray(map(double, drop(3, coll([1, 2, 3, 4, 5])))), [8, 10], "order2");
+
+    assert.deepEqual(collToArray(parallel(coll([1, 2, 3, 4, 5, 6]),
+					  drop(2, coll(["x", "y", "z", "w"])))),
+		     [[1, "z"], [2, "w"]], "parallel");
+    
+    var c = drop(3, coll([1, 2, 3, 4]));
+    collToArray(c);
+    assert.deepEqual(collToArray(c), [4], "multipass");
+});
+
 QUnit.test("concat", function(assert) {
 
     assert.deepEqual(collToArray(concat(coll([]), coll([]))), [], "both empty");
@@ -432,4 +465,34 @@ QUnit.test("operations", function(assert) {
 		      [2, "b"],
 		      [3, "c"]], "zip infinite with array collection");
     assert.deepEqual(collToArray(take(10, filter(prime, range(1, 1)))), [2, 3, 5, 7, 11, 13, 17, 19, 23, 29], "first 10 primes");
+});
+
+
+
+
+QUnit.module("Stream Collection");
+
+QUnit.test("creation", function(assert) {
+    assert.ok(streamColl(new ArrayStream([1, 2, 3, 4])).reductions);
+});
+
+QUnit.test("usage", function(assert) {
+    assert.deepEqual(collToArray(take(0, streamColl(new ArrayStream([])))), []);
+    assert.deepEqual(collToArray(take(10, streamColl(new ArrayStream([])))), []);
+    
+    var s = new ArrayStream([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    
+    var c0 = streamColl(s);
+    
+    var c1 = take(3, c0);
+    assert.deepEqual(count(c1), 3);
+    assert.deepEqual(c0.cache, [1, 2, 3]);
+    assert.deepEqual(collToArray(c1), [1, 2, 3]);
+
+    var c2 = take(4, c0);
+    assert.deepEqual(count(c2), 4);
+    assert.deepEqual(c0.cache, [1, 2, 3, 4]);
+    assert.deepEqual(collToArray(c2), [1, 2, 3, 4]);
+
+    
 });
